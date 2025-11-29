@@ -10,8 +10,7 @@ class Player(BaseModel):
 
 class Action(BaseModel):
     player_id: str
-    type: str
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    message: str
 
 
 class Event(BaseModel):
