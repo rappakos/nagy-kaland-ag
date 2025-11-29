@@ -1,5 +1,6 @@
 from typing import Dict, Optional
 from .models import GameState, Player, Event
+from .dm_agent import get_dm_agent
 
 # Very small in-memory store for MVP
 _games: Dict[str, GameState] = {}
@@ -32,11 +33,24 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
     )
     game.logs.append(event)
     
-    # Hard-coded DM response for now (will be replaced by AI agent)
+    # Get DM response using LangChain agent
+    dm_agent = get_dm_agent()
+    
+    # Convert game logs to dict format for agent context
+    history = [
+        {
+            "type": log.type,
+            "payload": log.payload
+        }
+        for log in game.logs[:-1]  # Exclude the just-added player message
+    ]
+    
+    dm_message = dm_agent.get_response(action.message, history)
+    
     dm_response = Event(
         id=str(len(game.logs)+1),
         type="dm_response",
-        payload={"message": f"Reply to: {action.message}"}
+        payload={"message": dm_message}
     )
     game.logs.append(dm_response)
     
