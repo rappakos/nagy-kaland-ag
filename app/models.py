@@ -8,6 +8,21 @@ class Player(BaseModel):
     name: str
 
 
+class Character(BaseModel):
+    """D&D style character sheet"""
+    name: str
+    class_type: str  # Warrior, Mage, Rogue, Cleric, etc.
+    level: int = 1
+    strength: int = 10
+    dexterity: int = 10
+    constitution: int = 10
+    intelligence: int = 10
+    wisdom: int = 10
+    charisma: int = 10
+    hit_points: int = 10
+    backstory: Optional[str] = None
+
+
 class Action(BaseModel):
     player_id: str
     message: str
@@ -22,6 +37,7 @@ class Event(BaseModel):
 class GameState(BaseModel):
     game_id: str
     players: List[Player] = []
+    characters: Dict[str, Optional[Character]] = {}  # player_id -> Character
     turn_index: int = 0
     logs: List[Event] = []
     meta: Dict[str, Any] = {}
@@ -29,4 +45,6 @@ class GameState(BaseModel):
     @classmethod
     def create(cls, players: Optional[List[Player]] = None):
         gid = str(uuid4())
-        return cls(game_id=gid, players=players or [], turn_index=0, logs=[], meta={})
+        # Initialize empty character slots for each player
+        characters = {p.id: None for p in (players or [])}
+        return cls(game_id=gid, players=players or [], characters=characters, turn_index=0, logs=[], meta={})

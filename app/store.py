@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from .models import GameState, Player, Event
+from .models import GameState, Player, Event, Character
 from .dm_agent import get_dm_agent
 
 # Very small in-memory store for MVP
@@ -36,21 +36,33 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
     # Get DM response using LangChain agent
     dm_agent = get_dm_agent()
     
-    # Convert game logs to dict format for agent context
-    history = [
-        {
-            "type": log.type,
-            "payload": log.payload
-        }
-        for log in game.logs[:-1]  # Exclude the just-added player message
-    ]
+    # Prepare game state for agent
+    game_state_dict = {
+        "current_player_id": action.player_id,
+        "characters": {
+            pid: char.model_dump() if char else None 
+            for pid, char in game.characters.items()
+        },
+        "history": [
+            {
+                "type": log.type,
+                "payload": log.payload
+            }
+            for log in game.logs[:-1]  # Exclude the just-added player message
+        ]
+    }
     
-    dm_message = dm_agent.get_response(action.message, history)
+    dm_result = dm_agent.get_response(action.message, game_state_dict)
+    
+    # If a character was created, save it
+    if "character" in dm_result:
+        char_data = dm_result["character"]
+        game.characters[action.player_id] = Character(**char_data)
     
     dm_response = Event(
         id=str(len(game.logs)+1),
         type="dm_response",
-        payload={"message": dm_message}
+        payload={"message": dm_result["message"]}
     )
     game.logs.append(dm_response)
     
