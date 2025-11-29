@@ -9,6 +9,43 @@ from langchain_openai import ChatOpenAI
 from .models import Character
 import os
 import json
+import random
+
+
+@tool
+def roll_dice(dice_type: str, count: int = 1) -> str:
+    """
+    Roll one or more dice and return the results.
+    Use this for skill checks, combat rolls, damage rolls, or any random events.
+    
+    Args:
+        dice_type: Type of dice (d4, d6, d8, d10, d12, d20, d100)
+        count: Number of dice to roll (default 1)
+    
+    Returns:
+        JSON with individual rolls, total, and dice type
+    """
+    valid_dice = {
+        "d4": 4, "d6": 6, "d8": 8, "d10": 10, 
+        "d12": 12, "d20": 20, "d100": 100
+    }
+    
+    dice_type_lower = dice_type.lower()
+    if dice_type_lower not in valid_dice:
+        return json.dumps({"error": f"Invalid dice type. Choose from: {', '.join(valid_dice.keys())}"})
+    
+    if count < 1 or count > 20:
+        return json.dumps({"error": "Count must be between 1 and 20"})
+    
+    sides = valid_dice[dice_type_lower]
+    rolls = [random.randint(1, sides) for _ in range(count)]
+    
+    return json.dumps({
+        "dice_type": dice_type_lower,
+        "count": count,
+        "rolls": rolls,
+        "total": sum(rolls)
+    })
 
 
 @tool
@@ -120,7 +157,7 @@ class DMAgent:
         )
         
         # Bind tools to the LLM
-        self.llm_with_tools = self.llm.bind_tools([create_character, grant_experience, level_up_character])
+        self.llm_with_tools = self.llm.bind_tools([create_character, grant_experience, level_up_character, roll_dice])
         
         self.system_prompt = """You are a creative and engaging Dungeon Master for a text-based D&D-style role-playing game.
 
@@ -141,6 +178,13 @@ EXPERIENCE & LEVELING:
 - Players level up when experience >= 100 * current_level
 - When leveling up, use level_up_character tool and let the player choose which attribute to increase
 - Leveling up increases: chosen attribute by 1, max HP by 5, and fully restores current HP
+
+DICE ROLLING:
+- Use roll_dice tool for skill checks, combat rolls, saving throws, and damage
+- Common rolls: d20 for skill checks/attacks, d6-d12 for damage, d4 for small weapons
+- You can roll multiple dice at once (e.g., 2d6 for damage)
+- Always narrate the result dramatically based on the roll
+- High rolls (15+) are successes, low rolls (5-) are failures for skill checks
 
 IMPORTANT: If a player hasn't created a character yet, guide them through character creation first before starting the adventure.
 
@@ -217,6 +261,12 @@ Always respond in-character as the DM narrating the story."""
                         result["hp_increase"] = levelup_data["hp_increase"]
                         if not result["message"]:
                             result["message"] = f"Level up! Your {levelup_data['attribute_increased']} increased by 1 and you gained {levelup_data['hp_increase']} max HP!"
+                
+                elif tool_name == "roll_dice":
+                    dice_data = json.loads(roll_dice.invoke(tool_call["args"]))
+                    if "error" not in dice_data:
+                        # Just log the roll, let the LLM narrate it in its response
+                        pass
         
         return result
 
