@@ -9,13 +9,13 @@ router = APIRouter(tags=["games"])
 
 
 class CreateGameRequest(BaseModel):
-    players: Optional[List[str]] = None
+    player_names: Optional[List[str]] = None
 
 
 @router.post("/games")
 async def create_game_endpoint(body: CreateGameRequest):
-    game = create_game(player_names=body.players)
-    return {"game_id": game.game_id}
+    game = create_game(player_names=body.player_names)
+    return {"game_id": game.game_id, "players": [{"id": p.id, "name": p.name} for p in game.players]}
 
 
 @router.get("/games/{game_id}")
