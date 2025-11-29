@@ -28,6 +28,32 @@ def create_game(player_names: Optional[list] = None) -> GameState:
     return game
 
 
+def assign_character_to_game(game_id: str, player_id: str, character_id: str, character: Character) -> Optional[GameState]:
+    """
+    Assign an existing character to a player in a game.
+    """
+    game = get_game(game_id)
+    if not game:
+        return None
+    
+    # Assign character
+    game.characters[player_id] = character
+    
+    # Update mappings
+    if game_id not in _character_mappings:
+        _character_mappings[game_id] = {}
+    _character_mappings[game_id][player_id] = character_id
+    
+    # Persist to database
+    db = SessionLocal()
+    try:
+        save_game(db, game, _character_mappings[game_id])
+    finally:
+        db.close()
+    
+    return game
+
+
 def get_game(game_id: str) -> Optional[GameState]:
     # Check cache first
     if game_id in _games:
