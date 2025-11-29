@@ -3,7 +3,7 @@ DM Agent using LangChain
 This agent acts as the Dungeon Master for the game.
 """
 from typing import List, Dict, Any, Optional
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from .models import Character
@@ -235,23 +235,25 @@ Always respond in-character as the DM narrating the story."""
         
         # Check if tools were called
         if hasattr(response, "tool_calls") and response.tool_calls:
+            # Add the AI response with tool calls to messages
+            messages.append(response)
+            
+            # Execute all tool calls and add tool messages
             for tool_call in response.tool_calls:
                 tool_name = tool_call["name"]
+                tool_call_id = tool_call["id"]
+                tool_output = None
                 
                 if tool_name == "create_character":
                     # Execute the tool
                     char_json = create_character.invoke(tool_call["args"])
                     result["character"] = json.loads(char_json)
-                    if not result["message"]:
-                        result["message"] = f"Character created! Welcome, {result['character']['name']} the {result['character']['class_type']}! Your adventure begins..."
+                    tool_output = char_json
                 
                 elif tool_name == "grant_experience":
                     xp_data = json.loads(grant_experience.invoke(tool_call["args"]))
                     result["experience"] = xp_data["experience"]
-                    if not result["message"]:
-                        result["message"] = f"You gained {xp_data['experience']} experience!"
-                    if xp_data.get("reason"):
-                        result["message"] += f" ({xp_data['reason']})"
+                    tool_output = json.dumps(xp_data)
                 
                 elif tool_name == "level_up_character":
                     levelup_data = json.loads(level_up_character.invoke(tool_call["args"]))
@@ -259,14 +261,19 @@ Always respond in-character as the DM narrating the story."""
                         result["level_up"] = True
                         result["attribute_increased"] = levelup_data["attribute_increased"]
                         result["hp_increase"] = levelup_data["hp_increase"]
-                        if not result["message"]:
-                            result["message"] = f"Level up! Your {levelup_data['attribute_increased']} increased by 1 and you gained {levelup_data['hp_increase']} max HP!"
+                    tool_output = json.dumps(levelup_data)
                 
                 elif tool_name == "roll_dice":
                     dice_data = json.loads(roll_dice.invoke(tool_call["args"]))
-                    if "error" not in dice_data:
-                        # Just log the roll, let the LLM narrate it in its response
-                        pass
+                    tool_output = json.dumps(dice_data)
+                
+                # Add tool message with the result
+                if tool_output:
+                    messages.append(ToolMessage(content=tool_output, tool_call_id=tool_call_id))
+            
+            # Get the final narrative response from the LLM
+            final_response = self.llm_with_tools.invoke(messages)
+            result["message"] = final_response.content or "Something interesting happened..."
         
         return result
 

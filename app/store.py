@@ -75,7 +75,7 @@ def get_game(game_id: str) -> Optional[GameState]:
 
 
 def apply_action(game_id: str, action) -> Optional[GameState]:
-    game = _games.get(game_id)
+    game = get_game(game_id)  # Use get_game instead of direct cache access
     if not game:
         return None
 
@@ -125,11 +125,19 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
         finally:
             db.close()
     
+    # Track if character was modified
+    character_modified = False
+    
     # If experience was granted, update character
     if "experience" in dm_result:
         char = game.characters.get(action.player_id)
         if char:
+            print(f"[DEBUG] Granting {dm_result['experience']} XP to {char.name}. Current XP: {char.experience}")
             char.experience += dm_result["experience"]
+            print(f"[DEBUG] New XP: {char.experience}")
+            character_modified = True
+        else:
+            print(f"[DEBUG] No character found for player {action.player_id}")
     
     # If character leveled up, apply changes
     if "level_up" in dm_result and dm_result["level_up"]:
@@ -148,14 +156,25 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
                 if attr and hasattr(char, attr):
                     current_val = getattr(char, attr)
                     setattr(char, attr, current_val + 1)
+                
+                character_modified = True
     
     # Update character in database if modified
-    if game.characters.get(action.player_id):
+    if character_modified and game.characters.get(action.player_id):
         db = SessionLocal()
         try:
-            char_id = _character_mappings.get(game.game_id, {}).get(action.player_id)
+            # Ensure we have the character mapping
+            if game.game_id not in _character_mappings:
+                _character_mappings[game.game_id] = {}
+            
+            char_id = _character_mappings[game.game_id].get(action.player_id)
+            print(f"[DEBUG] Character modified. Mapping exists: {game.game_id in _character_mappings}, char_id: {char_id}")
             if char_id:
+                print(f"[DEBUG] Updating character {char_id} in database")
                 update_character(db, char_id, game.characters[action.player_id])
+                print(f"[DEBUG] Character updated successfully")
+            else:
+                print(f"[DEBUG] No char_id found for player {action.player_id} in game {game.game_id}")
         finally:
             db.close()
     
