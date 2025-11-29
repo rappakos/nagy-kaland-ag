@@ -59,6 +59,30 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
         char_data = dm_result["character"]
         game.characters[action.player_id] = Character(**char_data)
     
+    # If experience was granted, update character
+    if "experience" in dm_result:
+        char = game.characters.get(action.player_id)
+        if char:
+            char.experience += dm_result["experience"]
+    
+    # If character leveled up, apply changes
+    if "level_up" in dm_result and dm_result["level_up"]:
+        char = game.characters.get(action.player_id)
+        if char:
+            # Check if they have enough XP to level up
+            xp_needed = 100 * char.level
+            if char.experience >= xp_needed:
+                char.experience -= xp_needed
+                char.level += 1
+                char.max_hit_points += dm_result.get("hp_increase", 5)
+                char.hit_points = char.max_hit_points  # Restore to full HP on level up
+                
+                # Increase chosen attribute
+                attr = dm_result.get("attribute_increased")
+                if attr and hasattr(char, attr):
+                    current_val = getattr(char, attr)
+                    setattr(char, attr, current_val + 1)
+    
     dm_response = Event(
         id=str(len(game.logs)+1),
         type="dm_response",

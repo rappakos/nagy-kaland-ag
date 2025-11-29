@@ -13,6 +13,7 @@ class Character(BaseModel):
     name: str
     class_type: str  # Warrior, Mage, Rogue, Cleric, etc.
     level: int = 1
+    experience: int = 0
     strength: int = 10
     dexterity: int = 10
     constitution: int = 10
@@ -20,6 +21,7 @@ class Character(BaseModel):
     wisdom: int = 10
     charisma: int = 10
     hit_points: int = 10
+    max_hit_points: int = 10
     backstory: Optional[str] = None
 
 

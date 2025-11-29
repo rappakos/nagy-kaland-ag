@@ -40,20 +40,66 @@ def create_character(
     Returns:
         JSON string with character details
     """
+    base_hp = 10 + constitution
     character = {
         "name": name,
         "class_type": class_type,
         "level": 1,
+        "experience": 0,
         "strength": strength,
         "dexterity": dexterity,
         "constitution": constitution,
         "intelligence": intelligence,
         "wisdom": wisdom,
         "charisma": charisma,
-        "hit_points": 10 + constitution,  # Base HP + CON modifier
+        "hit_points": base_hp,
+        "max_hit_points": base_hp,
         "backstory": backstory
     }
     return json.dumps(character)
+
+
+@tool
+def grant_experience(amount: int, reason: str = "") -> str:
+    """
+    Grant experience points to the player's character.
+    Use this when the player defeats enemies, completes quests, or performs heroic actions.
+    
+    Args:
+        amount: Experience points to grant (typically 10-100 per encounter)
+        reason: Why experience is being granted (e.g., "defeated goblin", "solved puzzle")
+    
+    Returns:
+        JSON with experience granted and reason
+    """
+    return json.dumps({"experience": amount, "reason": reason})
+
+
+@tool
+def level_up_character(
+    attribute_to_increase: str,
+    hp_increase: int = 5
+) -> str:
+    """
+    Level up a character when they have enough experience.
+    Experience needed: 100 * current_level
+    
+    Args:
+        attribute_to_increase: Which attribute to increase (strength, dexterity, constitution, intelligence, wisdom, charisma)
+        hp_increase: How much to increase max HP (default 5)
+    
+    Returns:
+        JSON with level up details
+    """
+    valid_attributes = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+    if attribute_to_increase.lower() not in valid_attributes:
+        return json.dumps({"error": f"Invalid attribute. Choose from: {', '.join(valid_attributes)}"})
+    
+    return json.dumps({
+        "level_up": True,
+        "attribute_increased": attribute_to_increase.lower(),
+        "hp_increase": hp_increase
+    })
 
 
 class DMAgent:
@@ -74,7 +120,7 @@ class DMAgent:
         )
         
         # Bind tools to the LLM
-        self.llm_with_tools = self.llm.bind_tools([create_character])
+        self.llm_with_tools = self.llm.bind_tools([create_character, grant_experience, level_up_character])
         
         self.system_prompt = """You are a creative and engaging Dungeon Master for a text-based D&D-style role-playing game.
 
@@ -88,6 +134,13 @@ Your role is to:
 - Maintain game continuity and narrative flow
 - Be creative but fair with outcomes
 - Keep responses concise but engaging (2-4 sentences)
+
+EXPERIENCE & LEVELING:
+- Grant experience using grant_experience tool when players defeat enemies, solve puzzles, or complete quests
+- Typical experience rewards: minor encounter (10-30 XP), significant encounter (50-100 XP), major victory (150-300 XP)
+- Players level up when experience >= 100 * current_level
+- When leveling up, use level_up_character tool and let the player choose which attribute to increase
+- Leveling up increases: chosen attribute by 1, max HP by 5, and fully restores current HP
 
 IMPORTANT: If a player hasn't created a character yet, guide them through character creation first before starting the adventure.
 
@@ -134,16 +187,36 @@ Always respond in-character as the DM narrating the story."""
         # Get response from LLM with tools
         response = self.llm_with_tools.invoke(messages)
         
-        result = {"message": response.content}
+        result = {"message": response.content or ""}
         
-        # Check if tool was called (character creation)
+        # Check if tools were called
         if hasattr(response, "tool_calls") and response.tool_calls:
             for tool_call in response.tool_calls:
-                if tool_call["name"] == "create_character":
+                tool_name = tool_call["name"]
+                
+                if tool_name == "create_character":
                     # Execute the tool
                     char_json = create_character.invoke(tool_call["args"])
                     result["character"] = json.loads(char_json)
-                    result["message"] = f"Character created! Welcome, {result['character']['name']} the {result['character']['class_type']}! Your adventure begins..."
+                    if not result["message"]:
+                        result["message"] = f"Character created! Welcome, {result['character']['name']} the {result['character']['class_type']}! Your adventure begins..."
+                
+                elif tool_name == "grant_experience":
+                    xp_data = json.loads(grant_experience.invoke(tool_call["args"]))
+                    result["experience"] = xp_data["experience"]
+                    if not result["message"]:
+                        result["message"] = f"You gained {xp_data['experience']} experience!"
+                    if xp_data.get("reason"):
+                        result["message"] += f" ({xp_data['reason']})"
+                
+                elif tool_name == "level_up_character":
+                    levelup_data = json.loads(level_up_character.invoke(tool_call["args"]))
+                    if "error" not in levelup_data:
+                        result["level_up"] = True
+                        result["attribute_increased"] = levelup_data["attribute_increased"]
+                        result["hp_increase"] = levelup_data["hp_increase"]
+                        if not result["message"]:
+                            result["message"] = f"Level up! Your {levelup_data['attribute_increased']} increased by 1 and you gained {levelup_data['hp_increase']} max HP!"
         
         return result
 
