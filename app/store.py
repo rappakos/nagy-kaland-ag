@@ -113,7 +113,9 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
     dm_result = dm_agent.get_response(action.message, game_state_dict)
     
     logger.info(f"DM result keys: {dm_result.keys()}")
+    logger.info(f"DM result: {dm_result}")
     logger.info(f"Game characters before processing: {list(game.characters.keys())}")
+    logger.info(f"Current character XP before processing: {game.characters.get(action.player_id).experience if game.characters.get(action.player_id) else 'N/A'}")
     
     # If a character was created, save it
     if "character" in dm_result:
@@ -149,6 +151,14 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
             char.experience += dm_result["experience"]
             logger.info(f"New XP: {char.experience}")
             character_modified = True
+            
+            # Check if character should level up automatically
+            xp_needed = 100 * char.level
+            logger.info(f"XP needed for level {char.level + 1}: {xp_needed}")
+            if char.experience >= xp_needed and "level_up" not in dm_result:
+                logger.info(f"Character has enough XP to level up! Creating level_up event.")
+                # Notify that level up is available
+                dm_result["level_up_available"] = True
         else:
             logger.warning(f"No character found for player {action.player_id}")
     
@@ -158,6 +168,7 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
         if char:
             # Check if they have enough XP to level up
             xp_needed = 100 * char.level
+            logger.info(f"Level up requested! Current level: {char.level}, XP: {char.experience}, XP needed: {xp_needed}")
             if char.experience >= xp_needed:
                 char.experience -= xp_needed
                 char.level += 1
@@ -166,11 +177,18 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
                 
                 # Increase chosen attribute
                 attr = dm_result.get("attribute_increased")
+                logger.info(f"Leveling up to {char.level}! Increasing {attr}, HP +{dm_result.get('hp_increase', 5)}")
                 if attr and hasattr(char, attr):
                     current_val = getattr(char, attr)
                     setattr(char, attr, current_val + 1)
+                    logger.info(f"{attr}: {current_val} -> {current_val + 1}")
                 
                 character_modified = True
+                logger.info(f"Level up complete! New level: {char.level}, Remaining XP: {char.experience}")
+            else:
+                logger.warning(f"Level up requested but not enough XP! Has {char.experience}, needs {xp_needed}")
+        else:
+            logger.warning(f"Level up requested but no character found for player {action.player_id}")
     
     # Update character in database if modified
     if character_modified and game.characters.get(action.player_id):

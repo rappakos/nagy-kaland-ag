@@ -176,8 +176,11 @@ EXPERIENCE & LEVELING:
 - Grant experience using grant_experience tool when players defeat enemies, solve puzzles, or complete quests
 - Typical experience rewards: minor encounter (10-30 XP), significant encounter (50-100 XP), major victory (150-300 XP)
 - Players level up when experience >= 100 * current_level
-- When leveling up, use level_up_character tool and let the player choose which attribute to increase
+- IMPORTANT: First grant XP, then check if they can level up. The system will apply XP before checking level up requirements.
+- When player has enough total XP to level up (after granting new XP), use level_up_character tool
+- Let the player choose which attribute to increase when leveling up
 - Leveling up increases: chosen attribute by 1, max HP by 5, and fully restores current HP
+- You can grant XP and trigger level up in the same response if the new XP total reaches the threshold
 
 DICE ROLLING:
 - Use roll_dice tool for skill checks, combat rolls, saving throws, and damage
