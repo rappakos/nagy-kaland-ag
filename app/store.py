@@ -1,8 +1,12 @@
 from typing import Dict, Optional
+import logging
 from .models import GameState, Player, Event, Character
 from .dm_agent import get_dm_agent
 from .database import SessionLocal
 from .persistence import save_game, load_game, save_character, update_character
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # In-memory cache for active games (backed by database)
 _games: Dict[str, GameState] = {}
@@ -108,22 +112,31 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
     
     dm_result = dm_agent.get_response(action.message, game_state_dict)
     
+    logger.info(f"DM result keys: {dm_result.keys()}")
+    logger.info(f"Game characters before processing: {list(game.characters.keys())}")
+    
     # If a character was created, save it
     if "character" in dm_result:
         char_data = dm_result["character"]
         new_char = Character(**char_data)
-        game.characters[action.player_id] = new_char
         
-        # Save to database
-        db = SessionLocal()
-        try:
-            player_name = next((p.name for p in game.players if p.id == action.player_id), "Unknown")
-            char_id = save_character(db, new_char, player_name)
-            if game.game_id not in _character_mappings:
-                _character_mappings[game.game_id] = {}
-            _character_mappings[game.game_id][action.player_id] = char_id
-        finally:
-            db.close()
+        # Check if player already has a character
+        if game.characters.get(action.player_id):
+            logger.warning(f"Player {action.player_id} already has a character! Not creating duplicate.")
+        else:
+            game.characters[action.player_id] = new_char
+            
+            # Save to database
+            db = SessionLocal()
+            try:
+                player_name = next((p.name for p in game.players if p.id == action.player_id), "Unknown")
+                char_id = save_character(db, new_char, player_name)
+                if game.game_id not in _character_mappings:
+                    _character_mappings[game.game_id] = {}
+                _character_mappings[game.game_id][action.player_id] = char_id
+                logger.info(f"Created new character {char_id} for player {action.player_id}")
+            finally:
+                db.close()
     
     # Track if character was modified
     character_modified = False
@@ -132,12 +145,12 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
     if "experience" in dm_result:
         char = game.characters.get(action.player_id)
         if char:
-            print(f"[DEBUG] Granting {dm_result['experience']} XP to {char.name}. Current XP: {char.experience}")
+            logger.info(f"Granting {dm_result['experience']} XP to {char.name}. Current XP: {char.experience}")
             char.experience += dm_result["experience"]
-            print(f"[DEBUG] New XP: {char.experience}")
+            logger.info(f"New XP: {char.experience}")
             character_modified = True
         else:
-            print(f"[DEBUG] No character found for player {action.player_id}")
+            logger.warning(f"No character found for player {action.player_id}")
     
     # If character leveled up, apply changes
     if "level_up" in dm_result and dm_result["level_up"]:
@@ -168,13 +181,14 @@ def apply_action(game_id: str, action) -> Optional[GameState]:
                 _character_mappings[game.game_id] = {}
             
             char_id = _character_mappings[game.game_id].get(action.player_id)
-            print(f"[DEBUG] Character modified. Mapping exists: {game.game_id in _character_mappings}, char_id: {char_id}")
+            logger.info(f"Character modified. Mapping exists: {game.game_id in _character_mappings}, char_id: {char_id}")
             if char_id:
-                print(f"[DEBUG] Updating character {char_id} in database")
+                logger.info(f"Updating character {char_id} in database")
                 update_character(db, char_id, game.characters[action.player_id])
-                print(f"[DEBUG] Character updated successfully")
+                logger.info(f"Character updated successfully")
             else:
-                print(f"[DEBUG] No char_id found for player {action.player_id} in game {game.game_id}")
+                logger.warning(f"No char_id found for player {action.player_id} in game {game.game_id}")
+                logger.info(f"Available mappings: {_character_mappings}")
         finally:
             db.close()
     

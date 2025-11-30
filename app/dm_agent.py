@@ -213,7 +213,7 @@ Always respond in-character as the DM narrating the story."""
             messages.append(SystemMessage(content=f"Player {player_id} does not have a character yet. Guide them through character creation."))
         else:
             char = game_state.get("characters", {}).get(player_id, {})
-            messages.append(SystemMessage(content=f"Player {player_id} is playing as {char.get('name', 'Unknown')}, a level {char.get('level', 1)} {char.get('class_type', 'Unknown')}."))
+            messages.append(SystemMessage(content=f"IMPORTANT: Player {player_id} already has a character: {char.get('name', 'Unknown')}, a level {char.get('level', 1)} {char.get('class_type', 'Unknown')} with {char.get('experience', 0)} XP. DO NOT create a new character. Begin or continue their adventure."))
         
         # Add recent game history (last 10 events for context)
         for event in game_history[-10:]:
